@@ -11,13 +11,14 @@ require('dotenv').config()
 const auth = require('./middleware/auth');
 const allowRole = require('./middleware/role');
 const Consultorio = require('./models/Consultorio');
+const hostname=os.hostname();
 
-const isProd = process.env.NODE_ENV === 'production'
+const isProd =hostname==='srv1180506' ? 'prod' : 'dev'
 
 const PORT = process.env.PORT || 4000
-const MONGO_URI = isProd ? process.env.MONGO_URI_PROD : process.env.MONGO_URI_LOCAL
-const JWT_SECRET = isProd ? process.env.JWT_SECRET_PROD : process.env.JWT_SECRET_LOCAL
-const SERVER_URL = isProd ? process.env.SERVER_URL_PROD : process.env.SERVER_URL_LOCAL
+const MONGO_URI = isProd === 'prod' ? process.env.MONGO_URI_PROD : process.env.MONGO_URI_LOCAL
+const JWT_SECRET =  isProd === 'prod' ? process.env.JWT_SECRET_PROD : process.env.JWT_SECRET_LOCAL
+const SERVER_URL =  isProd === 'prod' ? process.env.SERVER_URL_PROD : process.env.SERVER_URL_LOCAL
 
 const app = express();
 
@@ -25,7 +26,7 @@ const router = express.Router()
 app.use(express.json());
 app.use(cors());
 
-console.log(os.hostname())
+
 
 //Conexion a MongoDB
 mongoose.connect(MONGO_URI+'/agenda_consultorio')
