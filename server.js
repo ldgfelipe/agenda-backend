@@ -13,7 +13,7 @@ const allowRole = require('./middleware/role');
 const Consultorio = require('./models/Consultorio');
 const hostname=os.hostname();
 
-const isProd =hostname==='srv1180506' ? 'prod' : 'dev'
+const isProd = hostname==='srv1180506' ? 'prod' : 'dev'
 
 const PORT = process.env.PORT || 4000
 const MONGO_URI = isProd === 'prod' ? process.env.MONGO_URI_PROD : process.env.MONGO_URI_LOCAL
@@ -42,6 +42,8 @@ const UsuarioSchema = new mongoose.Schema({
 });
 
 const Usuario = mongoose.model('Usuario', UsuarioSchema);
+const Cita = require('./models/Cita'); // <--- ¡AÑADIR ESTA LÍNEA!
+
 
 //Registro
 app.post('/register',async (req, res)=>{
@@ -95,11 +97,107 @@ app.get('/consultorios', auth, async(req, res)=>{
     res.json(items)
 })
 
+// --- CITAS MÉDICAS ---
+
+// 🔑 NUEVA RUTA: GET /api/citas/disponibilidad?year=2025&month=12
+// Obtiene la disponibilidad agregada (Ocupados/Disponibles) para un mes.
+app.get('/citas/disponibilidad', auth, async (req, res) => {
+    try {
+        const { year, month } = req.query; // Recibimos el año y mes desde Vue
+
+        if (!year || !month) {
+            return res.status(400).json({ error: 'Faltan parámetros de año y mes.' });
+        }
+        
+        // Convertir mes y año a fechas de inicio y fin del mes
+        const fechaInicio = new Date(year, month - 1, 1);
+        const fechaFin = new Date(year, month, 1); // El primero del mes siguiente
+
+        // Obtener el total de consultorios activos
+        const totalConsultorios = await Consultorio.countDocuments({ estado: 'activo' });
+        
+        if (totalConsultorios === 0) {
+            return res.json({ totalConsultorios: 0, disponibilidad: {} });
+        }
+
+        // AGREGACIÓN: Contar citas reservadas por día
+        const citasPorDia = await Cita.aggregate([
+            {
+                $match: {
+                    fechaHoraInicio: { $gte: fechaInicio, $lt: fechaFin },
+                    estado: 'reservada'
+                }
+            },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$fechaHoraInicio" } },
+                    totalCitas: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Procesar resultados para el formato Ocupados/Disponibles
+        // Asumiendo 14 slots/día (8:00 a 21:00) por cada consultorio
+        const SLOTS_POR_CONSULTORIO_DIA = 14; 
+        const MAX_SLOTS_DIARIOS = totalConsultorios * SLOTS_POR_CONSULTORIO_DIA;
+
+        const resultados = citasPorDia.reduce((acc, item) => {
+            const ocupados = item.totalCitas;
+            acc[item._id] = {
+                ocupados: ocupados,
+                disponibles: Math.max(0, MAX_SLOTS_DIARIOS - ocupados) 
+            };
+            return acc;
+        }, {});
+
+        res.json({ totalConsultorios, disponibilidad: resultados });
+
+    } catch (error) {
+        console.error('Error al obtener disponibilidad mensual:', error);
+        res.status(500).json({ error: 'Error al obtener disponibilidad: ' + error.message });
+    }
+});
+
+
+// 🔑 NUEVA RUTA: GET /api/citas/dia?fecha=YYYY-MM-DD
+// Obtiene el detalle de las citas para un día específico (Necesario para el popup de horarios)
+app.get('/citas/dia', auth, async (req, res) => {
+    try {
+        const fechaISO = req.query.fecha; // Recibimos 'YYYY-MM-DD'
+
+        if (!fechaISO) {
+            return res.status(400).json({ error: 'Falta el parámetro de fecha.' });
+        }
+
+        const fechaInicio = new Date(fechaISO);
+        fechaInicio.setHours(0, 0, 0, 0); 
+
+        const fechaFin = new Date(fechaISO);
+        fechaFin.setHours(23, 59, 59, 999);
+
+        // Buscar todas las citas reservadas para ese día, trayendo el nombre del consultorio
+        const citas = await Cita.find({
+            fechaHoraInicio: { 
+                $gte: fechaInicio, 
+                $lte: fechaFin 
+            },
+            estado: 'reservada'
+        }).populate('consultorio', 'nombre'); // Importante para saber qué consultorio está ocupado
+
+        res.json(citas);
+    } catch (error) {
+        console.error('Error al obtener detalle de citas por día:', error);
+        res.status(500).json({ error: 'Error al obtener citas: ' + error.message });
+    }
+});
+
 const server = app.listen(PORT, ()=>{
     const address = server.address();
     console.log('Direccion: '+address.address)
     console.log('Servidor corriendo en '+SERVER_URL+':'+PORT)
 
 });
+
+
 
 
