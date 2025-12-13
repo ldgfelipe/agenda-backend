@@ -158,6 +158,66 @@ app.get('/citas/disponibilidad', auth, async (req, res) => {
     }
 });
 
+// server.js
+
+// ... (después de app.get('/consultorios', ...))
+
+// 🔑 NUEVA RUTA: Actualizar un consultorio por su ID
+// Método: PUT para actualizar el recurso
+app.post('/editconsultorios/:id', auth, allowRole('admin'), async (req, res) => {
+    console.log('carga c')
+    try {
+        const { id } = req.params;
+        const { nombre, codigo, ubicacion, estado } = req.body;
+
+        // Validar que al menos un campo esté presente para actualizar
+        if (!nombre && !codigo && !ubicacion && !estado) {
+            return res.status(400).json({ error: 'Se requiere al menos un campo para actualizar.' });
+        }
+
+        const consultorioActualizado = await Consultorio.findByIdAndUpdate(
+            id,
+            { $set: { nombre, codigo, ubicacion, estado } }, // Usar $set para actualizar solo los campos proporcionados
+            { new: true, runValidators: true } // new: true devuelve el documento actualizado
+        );
+
+        if (!consultorioActualizado) {
+            return res.status(404).json({ error: 'Consultorio no encontrado.' });
+        }
+
+        res.json(consultorioActualizado);
+
+    } catch (err) {
+        // Manejar errores de validación de Mongoose o código duplicado (11000)
+        if (err.code === 11000) {
+            return res.status(409).json({ error: 'Código duplicado. Ya existe otro consultorio con ese código.' });
+        }
+        res.status(500).json({ error: 'Error al actualizar el consultorio: ' + err.message });
+    }
+});
+
+// Método: DELETE
+app.delete('/consultorios/:id', auth, allowRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Utilizamos findByIdAndDelete de Mongoose para encontrar y eliminar
+        const consultorioEliminado = await Consultorio.findByIdAndDelete(id);
+
+        if (!consultorioEliminado) {
+            // Si no se encuentra el consultorio con ese ID
+            return res.status(404).json({ error: 'Consultorio no encontrado para eliminar.' });
+        }
+
+        // 200 OK con un mensaje de éxito o el objeto eliminado
+        res.json({ message: 'Consultorio eliminado con éxito.', consultorio: consultorioEliminado });
+
+    } catch (err) {
+        // Manejar errores de servidor
+        res.status(500).json({ error: 'Error al intentar eliminar el consultorio: ' + err.message });
+    }
+});
+
 
 // 🔑 NUEVA RUTA: GET /api/citas/dia?fecha=YYYY-MM-DD
 // Obtiene el detalle de las citas para un día específico (Necesario para el popup de horarios)
