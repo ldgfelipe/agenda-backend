@@ -70,8 +70,10 @@ app.post('/login', async (req, res) => {
 
     const token = jwt.sign({ id: usuario._id, rol: usuario.rol}, JWT_SECRET,{ expiresIn: '1h'});
     const rol = usuario.rol
+    const nombre = usuario.nombre
+      const id = usuario._id
 
-    res.json({token,rol});
+    res.json({token,rol,nombre,id});
 });
 
 
@@ -229,27 +231,101 @@ app.get('/citas/dia', auth, async (req, res) => {
             return res.status(400).json({ error: 'Falta el parámetro de fecha.' });
         }
 
-        const fechaInicio = new Date(fechaISO);
-        fechaInicio.setHours(0, 0, 0, 0); 
+     // 1. Iniciar en la medianoche (00:00:00) del día en UTC
+        const fechaInicio = new Date(fechaISO); 
+        // Si el ISO no tiene hora (ej: "2025-12-14"), se interpreta como 2025-12-14T00:00:00.000Z
 
-        const fechaFin = new Date(fechaISO);
-        fechaFin.setHours(23, 59, 59, 999);
-
+        // 2. Finalizar al inicio del día siguiente en UTC
+        const fechaFin = new Date(fechaInicio);
+        fechaFin.setUTCDate(fechaFin.getUTCDate() + 1); // Avanza un día en UTC
+     
         // Buscar todas las citas reservadas para ese día, trayendo el nombre del consultorio
         const citas = await Cita.find({
             fechaHoraInicio: { 
                 $gte: fechaInicio, 
                 $lte: fechaFin 
             },
-            estado: 'reservada'
+            estado: 'pendiente'
         }).populate('consultorio', 'nombre'); // Importante para saber qué consultorio está ocupado
-
+      
         res.json(citas);
     } catch (error) {
         console.error('Error al obtener detalle de citas por día:', error);
         res.status(500).json({ error: 'Error al obtener citas: ' + error.message });
     }
 });
+
+// 🔑 RUTA POST: Crear una nueva cita
+app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
+    try {
+        // Desestructurar los datos enviados por el frontend (citaPayload)
+        const {
+            consultorio,
+            medico,
+            pacienteNombre,
+            pacienteNotas,
+            pacienteCorreo,
+            pacienteTelefono,
+            costoConsulta,
+            fechaHoraInicio, // Viene como ISO string
+            estado
+        } = req.body;
+
+        // 1. Validación de Datos Esenciales
+        if (!consultorio || !medico || !pacienteNombre || !fechaHoraInicio || costoConsulta === undefined) {
+            return res.status(400).json({ 
+                error: 'Faltan campos obligatorios: consultorio, médico, nombre del paciente, fecha/hora o costo.' 
+            });
+        }
+        
+        // 2. Validación de Superposición (Opcional pero muy recomendado)
+        // Debes asegurarte de que no haya otra cita para ese consultorio/médico a esa hora.
+        // Ejemplo simple: buscar citas que comiencen exactamente a la misma hora para ese consultorio.
+        const superposicion = await Cita.findOne({
+            consultorio,
+            fechaHoraInicio: new Date(fechaHoraInicio), // Comparamos la fecha exacta
+            estado: { $ne: 'cancelada' } // Ignorar citas canceladas
+        });
+
+        if (superposicion) {
+            return res.status(409).json({
+                error: 'Conflicto de horario. Ya existe una reserva para ese consultorio en la hora seleccionada.'
+            });
+        }
+
+        // 3. Crear la nueva instancia de Cita
+        const nuevaCita = new Cita({
+            consultorio,
+            medico,
+            pacienteNombre,
+            pacienteNotas,
+            pacienteCorreo,
+            pacienteTelefono,
+            costoConsulta,
+            fechaHoraInicio: new Date(fechaHoraInicio), // Convertir ISO string a Date
+            estado: estado || 'pendiente',
+            creadoPor: req.user.id // Asume que 'auth' añade req.user
+        });
+
+        // 4. Guardar la cita en la base de datos
+        const citaGuardada = await nuevaCita.save();
+
+        // 5. Respuesta exitosa
+        res.status(201).json({ 
+            message: 'Cita creada con éxito', 
+            cita: citaGuardada 
+        });
+
+    } catch (err) {
+        console.error("Error al crear la cita:", err);
+        // Manejar errores de Mongoose (ej. validación, IDs inválidos)
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ error: err.message });
+        }
+        res.status(500).json({ error: 'Error interno del servidor al procesar la cita.' });
+    }
+});
+
 
 const server = app.listen(PORT, ()=>{
     const address = server.address();

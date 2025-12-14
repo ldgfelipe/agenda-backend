@@ -14,7 +14,7 @@ const CitaSchema = new mongoose.Schema({
             type: String,
             required: true
         },
-        especialidad: {
+        id: {
             type: String,
             required: true
         }
@@ -28,7 +28,7 @@ const CitaSchema = new mongoose.Schema({
     // Fecha y hora de fin de la cita (asumiendo citas de 1 hora)
     fechaHoraFin: {
         type: Date,
-        required: true
+        required: false
     },
     // Datos del paciente/cita (puedes expandir esto después)
     paciente: {
@@ -37,8 +37,8 @@ const CitaSchema = new mongoose.Schema({
     },
     estado: {
         type: String,
-        enum: ['reservada', 'cancelada', 'completada'],
-        default: 'reservada'
+        enum: ['pendiente','reservada', 'cancelada', 'completada'],
+        default: 'pendiente'
     },
 }, { timestamps: true });
 
