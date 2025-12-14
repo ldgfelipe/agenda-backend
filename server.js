@@ -5,6 +5,10 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const os = require('node:os');
 
+// 🔑 NUEVO: Importación de módulos para Socket.IO
+const http = require('http'); 
+const { Server } = require("socket.io");
+
 require('dotenv').config()
 
 /*-------middleware---------*/
@@ -26,7 +30,28 @@ const router = express.Router()
 app.use(express.json());
 app.use(cors());
 
+// ----------------------------------------------------
+// 🔑 1. CONFIGURACIÓN DE SOCKET.IO Y SERVIDOR HTTP
+// ----------------------------------------------------
 
+// Creamos un servidor HTTP a partir de la aplicación Express
+const server = http.createServer(app); 
+
+// Inicializamos Socket.IO adjunto al servidor HTTP
+const io = new Server(server, {
+    cors: {
+        // 🔑 IMPORTANTE: Reemplaza con el ORIGEN de tu aplicación Vue (ej. http://localhost:8080)
+        origin: "http://localhost:8080", 
+        methods: ["GET", "POST"]
+    }
+});
+
+// Manejo de conexiones Socket.IO (Opcional, pero bueno para el debugging)
+io.on('connection', (socket) => {
+    // console.log('Usuario conectado a Socket.IO');
+});
+
+// ----------------------------------------------------
 
 //Conexion a MongoDB
 mongoose.connect(MONGO_URI+'/agenda_consultorio')
@@ -309,8 +334,21 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
 
         // 4. Guardar la cita en la base de datos
         const citaGuardada = await nuevaCita.save();
+// ----------------------------------------------------
+        // 🔑 5. IMPLEMENTACIÓN DE SOCKET.IO: Emitir actualización
+        // ----------------------------------------------------
+        const fechaISO = citaGuardada.fechaHoraInicio.toISOString().substring(0, 10);
+        
+        // Emitir un evento a todos los clientes conectados.
+        // El frontend escuchará 'cita:actualizada' y recargará.
+        io.emit('cita:actualizada', { 
+            message: 'Nueva cita reservada',
+            fechaISO: fechaISO // Enviamos la fecha para recargar solo si es necesario
+        });
+        // ----------------------------------------------------
 
-        // 5. Respuesta exitosa
+
+        // 6. Respuesta exitosa
         res.status(201).json({ 
             message: 'Cita creada con éxito', 
             cita: citaGuardada 
@@ -327,11 +365,11 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
 });
 
 
-const server = app.listen(PORT, ()=>{
-    const address = server.address();
-    console.log('Direccion: '+address.address)
-    console.log('Servidor corriendo en '+SERVER_URL+':'+PORT)
-
+server.listen(PORT, ()=>{
+    const address = server.address();
+    console.log('Direccion: '+address.address)
+    // Usamos el log del SERVER_URL para mantener tu lógica existente
+    console.log('Servidor HTTP y Socket.IO corriendo en '+SERVER_URL+':'+PORT)
 });
 
 
