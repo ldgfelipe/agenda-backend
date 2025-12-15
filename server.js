@@ -36,12 +36,15 @@ app.use(cors());
 
 // Creamos un servidor HTTP a partir de la aplicación Express
 const server = http.createServer(app); 
-
+const allowedOrigins = [
+    "http://localhost:8080",
+    "http://srv1180506.hstgr.cloud:8080" // Tu URL de producción
+];
 // Inicializamos Socket.IO adjunto al servidor HTTP
 const io = new Server(server, {
     cors: {
         // 🔑 IMPORTANTE: Reemplaza con el ORIGEN de tu aplicación Vue (ej. http://localhost:8080)
-        origin: "http://localhost:8080", 
+        origin: allowedOrigins, 
         methods: ["GET", "POST"]
     }
 });
