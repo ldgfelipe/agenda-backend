@@ -155,7 +155,7 @@ app.get('/citas/disponibilidad', auth, async (req, res) => {
             {
                 $match: {
                     fechaHoraInicio: { $gte: fechaInicio, $lt: fechaFin },
-                    estado: 'reservada'
+                    estado: 'pendiente'
                 }
             },
             {
