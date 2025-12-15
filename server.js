@@ -290,19 +290,15 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
         const {
             consultorio,
             medico,
-            pacienteNombre,
-            pacienteNotas,
-            pacienteCorreo,
-            pacienteTelefono,
-            costoConsulta,
+            paciente,
+            costo,
             fechaHoraInicio, // Viene como ISO string
             estado
         } = req.body;
-
         // 1. Validación de Datos Esenciales
-        if (!consultorio || !medico || !pacienteNombre || !fechaHoraInicio || costoConsulta === undefined) {
+        if (!consultorio || !medico || !paciente || !fechaHoraInicio) {
             return res.status(400).json({ 
-                error: 'Faltan campos obligatorios: consultorio, médico, nombre del paciente, fecha/hora o costo.' 
+                error: 'Faltan campos obligatorios: consultorio, médico, paciente o fecha/hora.' 
             });
         }
         
@@ -325,11 +321,8 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
         const nuevaCita = new Cita({
             consultorio,
             medico,
-            pacienteNombre,
-            pacienteNotas,
-            pacienteCorreo,
-            pacienteTelefono,
-            costoConsulta,
+            paciente,
+            costo,
             fechaHoraInicio: new Date(fechaHoraInicio), // Convertir ISO string a Date
             estado: estado || 'pendiente',
             creadoPor: req.user.id // Asume que 'auth' añade req.user
@@ -367,6 +360,113 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
     }
 });
 
+// server.js (Añadir estas rutas después de app.post('/citas', ...))
+
+// 🔑 RUTA PUT: Modificar una cita existente por su ID
+app.put('/citas/:id', auth, allowRole('admin', 'medico'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body; // El cuerpo contiene los campos a actualizar
+
+        // 1. Validar que la cita existe
+        const cita = await Cita.findById(id);
+        if (!cita) {
+            return res.status(404).json({ error: 'Cita no encontrada.' });
+        }
+
+        // 2. Opcional: Validación de seguridad (solo el médico que reservó o un admin puede modificar/cancelar)
+        // Convertimos el ID de Mongoose a string para la comparación
+        const esAdmin = req.user.rol === 'admin';
+        const esMedicoReservado = cita.medico.toString() === req.user.id.toString(); 
+
+        if (!esAdmin && !esMedicoReservado) {
+            return res.status(403).json({ error: 'No tienes permiso para modificar esta cita.' });
+        }
+        
+        // 3. Validación de Superposición (si se cambia la fecha/hora/consultorio)
+        if (updates.fechaHoraInicio || updates.consultorio) {
+             const nuevaFecha = updates.fechaHoraInicio ? new Date(updates.fechaHoraInicio) : cita.fechaHoraInicio;
+             const nuevoConsultorio = updates.consultorio || cita.consultorio;
+
+             // Buscar superposición, excluyendo la cita que estamos a punto de actualizar
+             const superposicion = await Cita.findOne({
+                 consultorio: nuevoConsultorio,
+                 fechaHoraInicio: nuevaFecha,
+                 estado: { $ne: 'cancelada' },
+                 _id: { $ne: id } // 🔑 IMPORTANTE: Excluir la cita actual
+             });
+
+             if (superposicion) {
+                 return res.status(409).json({
+                     error: 'Conflicto de horario. Ya existe otra reserva para ese consultorio en la hora seleccionada.'
+                 });
+             }
+        }
+        
+
+        // 4. Realizar la actualización
+        const citaActualizada = await Cita.findByIdAndUpdate(
+            id,
+            { $set: updates },
+            { new: true, runValidators: true }
+        );
+
+        // ----------------------------------------------------
+        // 🔑 5. IMPLEMENTACIÓN DE SOCKET.IO: Emitir actualización
+        // ----------------------------------------------------
+        const fechaISO = citaActualizada.fechaHoraInicio.toISOString().substring(0, 10);
+        
+        io.emit('cita:actualizada', { 
+            message: 'Cita modificada o cancelada',
+            fechaISO: fechaISO 
+        });
+        // ----------------------------------------------------
+
+        res.json({ 
+            message: 'Cita actualizada con éxito', 
+            cita: citaActualizada 
+        });
+
+    } catch (err) {
+        console.error("Error al actualizar la cita:", err);
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ error: err.message });
+        }
+        res.status(500).json({ error: 'Error interno del servidor al actualizar la cita.' });
+    }
+});
+
+// 🔑 RUTA DELETE: Eliminar permanentemente una cita por su ID (Solo para Admin)
+app.delete('/citas/:id', auth, allowRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Eliminar la cita de la base de datos
+        const citaEliminada = await Cita.findByIdAndDelete(id);
+
+        if (!citaEliminada) {
+            return res.status(404).json({ error: 'Cita no encontrada para eliminar.' });
+        }
+        
+        // ----------------------------------------------------
+        // 🔑 3. IMPLEMENTACIÓN DE SOCKET.IO: Emitir actualización
+        // ----------------------------------------------------
+        const fechaISO = citaEliminada.fechaHoraInicio.toISOString().substring(0, 10);
+        
+        io.emit('cita:actualizada', { 
+            message: 'Cita eliminada permanentemente',
+            fechaISO: fechaISO 
+        });
+        // ----------------------------------------------------
+
+
+        res.json({ message: 'Cita eliminada permanentemente con éxito.' });
+
+    } catch (err) {
+        console.error("Error al eliminar la cita:", err);
+        res.status(500).json({ error: 'Error al eliminar la cita: ' + err.message });
+    }
+});
 
 server.listen(PORT, ()=>{
     const address = server.address();

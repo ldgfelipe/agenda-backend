@@ -32,8 +32,26 @@ const CitaSchema = new mongoose.Schema({
     },
     // Datos del paciente/cita (puedes expandir esto después)
     paciente: {
-        nombre: String,
-        telefono: String
+        nombre:{
+            type: String,
+            require:true
+        },
+        telefono:{
+            type: String,
+            require:false
+        },
+        correo:{
+            type: String,
+            require:false
+        },
+        notas:{
+            type:String,
+            require:false
+        }
+    },
+    costo:{
+        type:String,
+        require:false
     },
     estado: {
         type: String,
