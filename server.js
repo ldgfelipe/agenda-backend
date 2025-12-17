@@ -155,7 +155,7 @@ app.get('/citas/disponibilidad', auth, async (req, res) => {
             {
                 $match: {
                     fechaHoraInicio: { $gte: fechaInicio, $lt: fechaFin },
-                    estado: 'pendiente'
+                    estado: { $in: ['pendiente', 'confirmada'] }
                 }
             },
             {
@@ -273,10 +273,11 @@ app.get('/citas/dia', auth, async (req, res) => {
                 $gte: fechaInicio, 
                 $lte: fechaFin 
             },
-            estado: 'pendiente'
+            estado:{ $in: ['pendiente', 'confirmada'] }
         }).populate('consultorio', 'nombre'); // Importante para saber qué consultorio está ocupado
       
         res.json(citas);
+        
     } catch (error) {
         console.error('Error al obtener detalle de citas por día:', error);
         res.status(500).json({ error: 'Error al obtener citas: ' + error.message });
@@ -379,9 +380,9 @@ app.put('/citas/:id', auth, allowRole('admin', 'medico'), async (req, res) => {
         const esAdmin = req.user.rol === 'admin';
         const esMedicoReservado = cita.medico.toString() === req.user.id.toString(); 
 
-        if (!esAdmin && !esMedicoReservado) {
+        /*if (!esMedicoReservado) {
             return res.status(403).json({ error: 'No tienes permiso para modificar esta cita.' });
-        }
+        }*/
         
         // 3. Validación de Superposición (si se cambia la fecha/hora/consultorio)
         if (updates.fechaHoraInicio || updates.consultorio) {
