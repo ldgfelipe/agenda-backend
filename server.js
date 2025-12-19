@@ -668,8 +668,8 @@ app.get('/citas/exportar-pdf', auth, allowRole('admin'), async (req, res) => {
                         body: body
                     },
                     layout: 'lightHorizontalLines'
-                },
-                { text: `\nTOTAL INGRESOS ESTIMADOS: $${totalIngresos}`, style: 'total' }
+                }
+               // { text: `\nTOTAL INGRESOS ESTIMADOS: $${totalIngresos}`, style: 'total' }
             ],
             styles: {
                 header: { fontSize: 16, bold: true, color: '#2c3e50' },
