@@ -358,85 +358,105 @@ const { enviarConfirmacionCita } = require('./mail/emailService');
 // 🔑 RUTA POST: Crear una nueva cita
 app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
     try {
-        // Desestructurar los datos enviados por el frontend (citaPayload)
         const {
             consultorio,
+            nombreConsultorio,
             medico,
+            opcionesRegistroMedico, // 👈 Nuevo campo del frontend
             paciente,
             costo,
-            fechaHoraInicio, // Viene como ISO string
+            fechaHoraInicio,
             estado
         } = req.body;
-        // 1. Validación de Datos Esenciales
+
+        // 1. Validación Básica
         if (!consultorio || !medico || !paciente || !fechaHoraInicio) {
-            return res.status(400).json({ 
-                error: 'Faltan campos obligatorios: consultorio, médico, paciente o fecha/hora.' 
-            });
+            return res.status(400).json({ error: 'Faltan campos obligatorios.' });
         }
-        
-        // 2. Validación de Superposición (Opcional pero muy recomendado)
-        // Debes asegurarte de que no haya otra cita para ese consultorio/médico a esa hora.
-        // Ejemplo simple: buscar citas que comiencen exactamente a la misma hora para ese consultorio.
+
+        let medicoIdFinal = medico.id;
+
+        // 2. Lógica de Registro Automático de Médico (Solo si es Admin)
+        if (req.user.rol === 'admin' && opcionesRegistroMedico?.crearUsuario && !medicoIdFinal) {
+            try {
+                // Verificar si el correo ya existe para no duplicar
+                const usuarioExistente = await Usuario.findOne({ email: opcionesRegistroMedico.correo });
+                
+                if (usuarioExistente) {
+                    medicoIdFinal = usuarioExistente._id;
+                } else {
+                    // Crear nuevo usuario médico con contraseña genérica
+                    // Recomendación: enviar correo al médico con su acceso después de esto
+                    const passwordGenerica = 'Mediwork123*'; 
+                    const hashedPassword = await bcrypt.hash(passwordGenerica, 10);
+                    
+                    const nuevoMedico = new Usuario({
+                        nombre: medico.nombre,
+                        email: opcionesRegistroMedico.correo,
+                        password: hashedPassword,
+                        rol: 'medico'
+                    });
+                    
+                    const medicoGuardado = await nuevoMedico.save();
+                    medicoIdFinal = medicoGuardado._id;
+                    console.log(`✅ Nuevo médico registrado: ${medico.nombre}`);
+                }
+            } catch (err) {
+                console.error("Error al registrar médico automático:", err);
+                return res.status(500).json({ error: 'Error al intentar registrar al nuevo médico.' });
+            }
+        }
+
+        // 3. Validación de Superposición
         const superposicion = await Cita.findOne({
             consultorio,
-            fechaHoraInicio: new Date(fechaHoraInicio), // Comparamos la fecha exacta
-            estado: { $ne: 'cancelada' } // Ignorar citas canceladas
+            fechaHoraInicio: new Date(fechaHoraInicio),
+            estado: { $ne: 'cancelada' }
         });
 
         if (superposicion) {
-            return res.status(409).json({
-                error: 'Conflicto de horario. Ya existe una reserva para ese consultorio en la hora seleccionada.'
-            });
+            return res.status(409).json({ error: 'Conflicto de horario en este consultorio.' });
         }
 
-        // 3. Crear la nueva instancia de Cita
+        // 4. Crear la Cita con el ID final (sea el previo o el nuevo)
         const nuevaCita = new Cita({
             consultorio,
-            medico,
+            medico: {
+                nombre: medico.nombre,
+                id: medicoIdFinal // 👈 Ahora usa el ID recién creado si aplica
+            },
             paciente,
             costo,
-            fechaHoraInicio: new Date(fechaHoraInicio), // Convertir ISO string a Date
+            fechaHoraInicio: new Date(fechaHoraInicio),
             estado: estado || 'pendiente',
-            creadoPor: req.user.id // Asume que 'auth' añade req.user
+            creadoPor: req.user.id
         });
 
-        enviarConfirmacionCita({
-            pacienteEmail: nuevaCita.paciente.correo,
-            pacienteNombre: nuevaCita.paciente.nombre,
-            fecha: nuevaCita.fechaHoraInicio.toLocaleDateString(),
-            hora: nuevaCita.fechaHoraInicio.toLocaleTimeString(),
-            consultorio: nuevaCita.consultorio.nombre
-            });
-
-        // 4. Guardar la cita en la base de datos
         const citaGuardada = await nuevaCita.save();
-// ----------------------------------------------------
-        // 🔑 5. IMPLEMENTACIÓN DE SOCKET.IO: Emitir actualización
-        // ----------------------------------------------------
+
+        // 5. Envío de Correo (Mantenemos tu lógica)
+        try {
+            enviarConfirmacionCita({
+                pacienteEmail: nuevaCita.paciente.correo,
+                pacienteNombre: nuevaCita.paciente.nombre,
+                fecha: nuevaCita.fechaHoraInicio.toLocaleDateString(),
+                hora: nuevaCita.fechaHoraInicio.toLocaleTimeString(),
+                consultorio: nombreConsultorio,
+                medico: nuevaCita.medico.nombre
+            });
+        } catch (mailErr) {
+            console.error("Error al enviar email (cita guardada ok):", mailErr);
+        }
+
+        // 6. Socket.IO y Respuesta
         const fechaISO = citaGuardada.fechaHoraInicio.toISOString().substring(0, 10);
-        
-        // Emitir un evento a todos los clientes conectados.
-        // El frontend escuchará 'cita:actualizada' y recargará.
-        io.emit('cita:actualizada', { 
-            message: 'Nueva cita reservada',
-            fechaISO: fechaISO // Enviamos la fecha para recargar solo si es necesario
-        });
-        // ----------------------------------------------------
+        io.emit('cita:actualizada', { message: 'Nueva cita reservada', fechaISO });
 
-
-        // 6. Respuesta exitosa
-        res.status(201).json({ 
-            message: 'Cita creada con éxito', 
-            cita: citaGuardada 
-        });
+        res.status(201).json({ message: 'Cita creada con éxito', cita: citaGuardada });
 
     } catch (err) {
         console.error("Error al crear la cita:", err);
-        // Manejar errores de Mongoose (ej. validación, IDs inválidos)
-        if (err.name === 'ValidationError') {
-            return res.status(400).json({ error: err.message });
-        }
-        res.status(500).json({ error: 'Error interno del servidor al procesar la cita.' });
+        res.status(500).json({ error: 'Error interno del servidor.' });
     }
 });
 
