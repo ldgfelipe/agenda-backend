@@ -104,6 +104,74 @@ app.post('/login', async (req, res) => {
     res.json({token,rol,nombre,id});
 });
 
+// ====================================================
+// 👥 RUTAS DE ADMINISTRACIÓN DE USUARIOS (SOLO ADMIN)
+// ====================================================
+
+// 1. Obtener todos los usuarios
+app.get('/usuarios', auth, allowRole('admin'), async (req, res) => {
+    try {
+        // Buscamos todos y excluimos el campo password por seguridad
+        const usuarios = await Usuario.find().select('-password');
+        res.json(usuarios);
+    } catch (err) {
+        res.status(500).json({ error: 'Error al obtener la lista de usuarios' });
+    }
+});
+
+// 2. Actualizar un usuario (incluyendo cambio de contraseña)
+app.put('/usuarios/:id', auth, allowRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nombre, email, rol, password } = req.body;
+        
+        // Objeto con los campos a actualizar
+        let updateData = { nombre, email, rol };
+
+        // Si el admin envió una nueva contraseña, la hasheamos
+        if (password && password.trim() !== "") {
+            const salt = await bcrypt.genSalt(10);
+            updateData.password = await bcrypt.hash(password, salt);
+        }
+
+        const usuarioActualizado = await Usuario.findByIdAndUpdate(
+            id, 
+            { $set: updateData }, 
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        if (!usuarioActualizado) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        res.json({ message: 'Usuario actualizado correctamente', usuario: usuarioActualizado });
+    } catch (err) {
+        if (err.code === 11000) return res.status(409).json({ error: 'El email ya está en uso' });
+        res.status(500).json({ error: 'Error al actualizar usuario: ' + err.message });
+    }
+});
+
+// 3. Eliminar un usuario
+app.delete('/usuarios/:id', auth, allowRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Seguridad: Evitar que el admin se elimine a sí mismo
+        if (id === req.user.id) {
+            return res.status(403).json({ error: 'No puedes eliminar tu propia cuenta de administrador' });
+        }
+
+        const usuarioEliminado = await Usuario.findByIdAndDelete(id);
+
+        if (!usuarioEliminado) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        res.json({ message: 'Usuario eliminado con éxito' });
+    } catch (err) {
+        res.status(500).json({ error: 'Error al eliminar usuario' });
+    }
+});
 
 ///Crea consultorio (Solo Admin)
 app.post('/consultorios', auth, allowRole('admin'), async (req, res)=>{
