@@ -6,7 +6,7 @@ const cors = require('cors');
 const os = require('node:os');
 
 // 🔑 NUEVO: Importación de módulos para Socket.IO
-const http = require('http'); 
+const http = require('http');
 const { Server } = require("socket.io");
 
 require('dotenv').config()
@@ -15,14 +15,35 @@ require('dotenv').config()
 const auth = require('./middleware/auth');
 const allowRole = require('./middleware/role');
 const Consultorio = require('./models/Consultorio');
-const hostname=os.hostname();
+const hostname = os.hostname();
 
-const isProd = hostname==='agenda.mediwork.com.mx' ? 'prod' : 'dev'
+/*---importaciones de pdf---*/
+const PdfPrinter = require('pdfmake');
+const path = require('path');
+
+// Definimos las rutas a los archivos físicos en tu servidor
+const fonts = {
+    Helvetica: {
+        normal: 'Helvetica',
+        bold: 'Helvetica-Bold',
+        italics: 'Helvetica-Oblique',
+        bolditalics: 'Helvetica-BoldOblique'
+    }
+};
+
+
+const printer = new PdfPrinter(fonts);
+
+
+
+
+
+const isProd = hostname === 'agenda.mediwork.com.mx' ? 'prod' : 'dev'
 
 const PORT = process.env.PORT || 4001
 const MONGO_URI = isProd === 'prod' ? process.env.MONGO_URI_PROD : process.env.MONGO_URI_LOCAL
-const JWT_SECRET =  isProd === 'prod' ? process.env.JWT_SECRET_PROD : process.env.JWT_SECRET_LOCAL
-const SERVER_URL =  isProd === 'prod' ? process.env.SERVER_URL_PROD : process.env.SERVER_URL_LOCAL
+const JWT_SECRET = isProd === 'prod' ? process.env.JWT_SECRET_PROD : process.env.JWT_SECRET_LOCAL
+const SERVER_URL = isProd === 'prod' ? process.env.SERVER_URL_PROD : process.env.SERVER_URL_LOCAL
 
 const app = express();
 
@@ -35,7 +56,7 @@ app.use(cors());
 // ----------------------------------------------------
 
 // Creamos un servidor HTTP a partir de la aplicación Express
-const server = http.createServer(app); 
+const server = http.createServer(app);
 const allowedOrigins = [
     "http://localhost:8080",
     "http://srv1180506.hstgr.cloud:8080",
@@ -45,7 +66,7 @@ const allowedOrigins = [
 const io = new Server(server, {
     cors: {
         // 🔑 IMPORTANTE: Reemplaza con el ORIGEN de tu aplicación Vue (ej. http://localhost:8080)
-        origin: allowedOrigins, 
+        origin: allowedOrigins,
         methods: ["GET", "POST"]
     }
 });
@@ -58,16 +79,16 @@ io.on('connection', (socket) => {
 // ----------------------------------------------------
 
 //Conexion a MongoDB
-mongoose.connect(MONGO_URI+'/agenda_consultorio')
-.then(()=>console.log('MongoDB Conectado'))
-.catch(err => console.error(err));
+mongoose.connect(MONGO_URI + '/agenda_consultorio')
+    .then(() => console.log('MongoDB Conectado'))
+    .catch(err => console.error(err));
 
 
 const UsuarioSchema = new mongoose.Schema({
-    nombre:String,
-    email:{type:String, unique:true},
-    password:String,
-    rol:String
+    nombre: String,
+    email: { type: String, unique: true },
+    password: String,
+    rol: String
 });
 
 const Usuario = mongoose.model('Usuario', UsuarioSchema);
@@ -75,34 +96,34 @@ const Cita = require('./models/Cita'); // <--- ¡AÑADIR ESTA LÍNEA!
 
 
 //Registro
-app.post('/register',async (req, res)=>{
-    const {nombre, email, password, rol}=req.body;
+app.post('/register', async (req, res) => {
+    const { nombre, email, password, rol } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
-    const nuevoUsuario = new Usuario({nombre, email, password:hashedPassword, rol});
+    const nuevoUsuario = new Usuario({ nombre, email, password: hashedPassword, rol });
     await nuevoUsuario.save();
-    res.json({message: 'Usuario registrado'});
+    res.json({ message: 'Usuario registrado' });
 });
 
 //login
 
 app.post('/login', async (req, res) => {
-  
-    const {email, password }=req.body;
+
+    const { email, password } = req.body;
     const usuario = await Usuario.findOne({ email });
-    if(!usuario) return res.status(400).json({ error: 'Usuario no encontrado'});
+    if (!usuario) return res.status(400).json({ error: 'Usuario no encontrado' });
 
 
     const valido = await bcrypt.compare(password, usuario.password);
 
 
-    if(!valido) return res.status(400).json({ error: 'Contraseña incorrecta'});
+    if (!valido) return res.status(400).json({ error: 'Contraseña incorrecta' });
 
-    const token = jwt.sign({ id: usuario._id, rol: usuario.rol}, JWT_SECRET,{ expiresIn: '1h'});
+    const token = jwt.sign({ id: usuario._id, rol: usuario.rol }, JWT_SECRET, { expiresIn: '1h' });
     const rol = usuario.rol
     const nombre = usuario.nombre
-      const id = usuario._id
+    const id = usuario._id
 
-    res.json({token,rol,nombre,id});
+    res.json({ token, rol, nombre, id });
 });
 
 // ====================================================
@@ -125,7 +146,7 @@ app.put('/usuarios/:id', auth, allowRole('admin'), async (req, res) => {
     try {
         const { id } = req.params;
         const { nombre, email, rol, password } = req.body;
-        
+
         // Objeto con los campos a actualizar
         let updateData = { nombre, email, rol };
 
@@ -136,8 +157,8 @@ app.put('/usuarios/:id', auth, allowRole('admin'), async (req, res) => {
         }
 
         const usuarioActualizado = await Usuario.findByIdAndUpdate(
-            id, 
-            { $set: updateData }, 
+            id,
+            { $set: updateData },
             { new: true, runValidators: true }
         ).select('-password');
 
@@ -175,24 +196,24 @@ app.delete('/usuarios/:id', auth, allowRole('admin'), async (req, res) => {
 });
 
 ///Crea consultorio (Solo Admin)
-app.post('/consultorios', auth, allowRole('admin'), async (req, res)=>{
-    const {nombre, codigo, ubicacion, estado } = req.body
-    if(!nombre || !codigo) return res.status(400).json({ error: 'Nombre y Código son requeridos'});
+app.post('/consultorios', auth, allowRole('admin'), async (req, res) => {
+    const { nombre, codigo, ubicacion, estado } = req.body
+    if (!nombre || !codigo) return res.status(400).json({ error: 'Nombre y Código son requeridos' });
 
-    try{
+    try {
         const nuevo = await Consultorio.create({ nombre, codigo, ubicacion, estado })
         res.status(201).json(nuevo)
 
-    }catch(err){        
-        if(err.code === 11000) return res.status(409).json({
+    } catch (err) {
+        if (err.code === 11000) return res.status(409).json({
             error: 'Código duplicado'
         })
-        res.status(500).json({ error: 'Error al crear consultorio'})
+        res.status(500).json({ error: 'Error al crear consultorio' })
     }
 })
 
-app.get('/consultorios', auth, async(req, res)=>{
-    const items = await Consultorio.find().sort({ nombre:1 })
+app.get('/consultorios', auth, async (req, res) => {
+    const items = await Consultorio.find().sort({ nombre: 1 })
     res.json(items)
 })
 
@@ -207,14 +228,14 @@ app.get('/citas/disponibilidad', auth, async (req, res) => {
         if (!year || !month) {
             return res.status(400).json({ error: 'Faltan parámetros de año y mes.' });
         }
-        
+
         // Convertir mes y año a fechas de inicio y fin del mes
         const fechaInicio = new Date(year, month - 1, 1);
         const fechaFin = new Date(year, month, 1); // El primero del mes siguiente
 
         // Obtener el total de consultorios activos
         const totalConsultorios = await Consultorio.countDocuments({ estado: 'activo' });
-        
+
         if (totalConsultorios === 0) {
             return res.json({ totalConsultorios: 0, disponibilidad: {} });
         }
@@ -237,14 +258,14 @@ app.get('/citas/disponibilidad', auth, async (req, res) => {
 
         // Procesar resultados para el formato Ocupados/Disponibles
         // Asumiendo 14 slots/día (8:00 a 21:00) por cada consultorio
-        const SLOTS_POR_CONSULTORIO_DIA = 14; 
+        const SLOTS_POR_CONSULTORIO_DIA = 14;
         const MAX_SLOTS_DIARIOS = totalConsultorios * SLOTS_POR_CONSULTORIO_DIA;
 
         const resultados = citasPorDia.reduce((acc, item) => {
             const ocupados = item.totalCitas;
             acc[item._id] = {
                 ocupados: ocupados,
-                disponibles: Math.max(0, MAX_SLOTS_DIARIOS - ocupados) 
+                disponibles: Math.max(0, MAX_SLOTS_DIARIOS - ocupados)
             };
             return acc;
         }, {});
@@ -328,25 +349,25 @@ app.get('/citas/dia', auth, async (req, res) => {
             return res.status(400).json({ error: 'Falta el parámetro de fecha.' });
         }
 
-     // 1. Iniciar en la medianoche (00:00:00) del día en UTC
-        const fechaInicio = new Date(fechaISO); 
+        // 1. Iniciar en la medianoche (00:00:00) del día en UTC
+        const fechaInicio = new Date(fechaISO);
         // Si el ISO no tiene hora (ej: "2025-12-14"), se interpreta como 2025-12-14T00:00:00.000Z
 
         // 2. Finalizar al inicio del día siguiente en UTC
         const fechaFin = new Date(fechaInicio);
         fechaFin.setUTCDate(fechaFin.getUTCDate() + 1); // Avanza un día en UTC
-     
+
         // Buscar todas las citas reservadas para ese día, trayendo el nombre del consultorio
         const citas = await Cita.find({
-            fechaHoraInicio: { 
-                $gte: fechaInicio, 
-                $lte: fechaFin 
+            fechaHoraInicio: {
+                $gte: fechaInicio,
+                $lte: fechaFin
             },
-            estado:{ $in: ['pendiente', 'confirmada'] }
+            estado: { $in: ['pendiente', 'confirmada'] }
         }).populate('consultorio', 'nombre'); // Importante para saber qué consultorio está ocupado
-      
+
         res.json(citas);
-        
+
     } catch (error) {
         console.error('Error al obtener detalle de citas por día:', error);
         res.status(500).json({ error: 'Error al obtener citas: ' + error.message });
@@ -381,22 +402,22 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
             try {
                 // Verificar si el correo ya existe para no duplicar
                 const usuarioExistente = await Usuario.findOne({ email: opcionesRegistroMedico.correo });
-                
+
                 if (usuarioExistente) {
                     medicoIdFinal = usuarioExistente._id;
                 } else {
                     // Crear nuevo usuario médico con contraseña genérica
                     // Recomendación: enviar correo al médico con su acceso después de esto
-                    const passwordGenerica = 'Mediwork123*'; 
+                    const passwordGenerica = 'Mediwork123*';
                     const hashedPassword = await bcrypt.hash(passwordGenerica, 10);
-                    
+
                     const nuevoMedico = new Usuario({
                         nombre: medico.nombre,
                         email: opcionesRegistroMedico.correo,
                         password: hashedPassword,
                         rol: 'medico'
                     });
-                    
+
                     const medicoGuardado = await nuevoMedico.save();
                     medicoIdFinal = medicoGuardado._id;
                     console.log(`✅ Nuevo médico registrado: ${medico.nombre}`);
@@ -477,32 +498,32 @@ app.put('/citas/:id', auth, allowRole('admin', 'medico'), async (req, res) => {
         // 2. Opcional: Validación de seguridad (solo el médico que reservó o un admin puede modificar/cancelar)
         // Convertimos el ID de Mongoose a string para la comparación
         const esAdmin = req.user.rol === 'admin';
-        const esMedicoReservado = cita.medico.toString() === req.user.id.toString(); 
+        const esMedicoReservado = cita.medico.toString() === req.user.id.toString();
 
         /*if (!esMedicoReservado) {
             return res.status(403).json({ error: 'No tienes permiso para modificar esta cita.' });
         }*/
-        
+
         // 3. Validación de Superposición (si se cambia la fecha/hora/consultorio)
         if (updates.fechaHoraInicio || updates.consultorio) {
-             const nuevaFecha = updates.fechaHoraInicio ? new Date(updates.fechaHoraInicio) : cita.fechaHoraInicio;
-             const nuevoConsultorio = updates.consultorio || cita.consultorio;
+            const nuevaFecha = updates.fechaHoraInicio ? new Date(updates.fechaHoraInicio) : cita.fechaHoraInicio;
+            const nuevoConsultorio = updates.consultorio || cita.consultorio;
 
-             // Buscar superposición, excluyendo la cita que estamos a punto de actualizar
-             const superposicion = await Cita.findOne({
-                 consultorio: nuevoConsultorio,
-                 fechaHoraInicio: nuevaFecha,
-                 estado: { $ne: 'cancelada' },
-                 _id: { $ne: id } // 🔑 IMPORTANTE: Excluir la cita actual
-             });
+            // Buscar superposición, excluyendo la cita que estamos a punto de actualizar
+            const superposicion = await Cita.findOne({
+                consultorio: nuevoConsultorio,
+                fechaHoraInicio: nuevaFecha,
+                estado: { $ne: 'cancelada' },
+                _id: { $ne: id } // 🔑 IMPORTANTE: Excluir la cita actual
+            });
 
-             if (superposicion) {
-                 return res.status(409).json({
-                     error: 'Conflicto de horario. Ya existe otra reserva para ese consultorio en la hora seleccionada.'
-                 });
-             }
+            if (superposicion) {
+                return res.status(409).json({
+                    error: 'Conflicto de horario. Ya existe otra reserva para ese consultorio en la hora seleccionada.'
+                });
+            }
         }
-        
+
 
         // 4. Realizar la actualización
         const citaActualizada = await Cita.findByIdAndUpdate(
@@ -515,16 +536,16 @@ app.put('/citas/:id', auth, allowRole('admin', 'medico'), async (req, res) => {
         // 🔑 5. IMPLEMENTACIÓN DE SOCKET.IO: Emitir actualización
         // ----------------------------------------------------
         const fechaISO = citaActualizada.fechaHoraInicio.toISOString().substring(0, 10);
-        
-        io.emit('cita:actualizada', { 
+
+        io.emit('cita:actualizada', {
             message: 'Cita modificada o cancelada',
-            fechaISO: fechaISO 
+            fechaISO: fechaISO
         });
         // ----------------------------------------------------
 
-        res.json({ 
-            message: 'Cita actualizada con éxito', 
-            cita: citaActualizada 
+        res.json({
+            message: 'Cita actualizada con éxito',
+            cita: citaActualizada
         });
 
     } catch (err) {
@@ -547,15 +568,15 @@ app.delete('/citas/:id', auth, allowRole('admin'), async (req, res) => {
         if (!citaEliminada) {
             return res.status(404).json({ error: 'Cita no encontrada para eliminar.' });
         }
-        
+
         // ----------------------------------------------------
         // 🔑 3. IMPLEMENTACIÓN DE SOCKET.IO: Emitir actualización
         // ----------------------------------------------------
         const fechaISO = citaEliminada.fechaHoraInicio.toISOString().substring(0, 10);
-        
-        io.emit('cita:actualizada', { 
+
+        io.emit('cita:actualizada', {
             message: 'Cita eliminada permanentemente',
-            fechaISO: fechaISO 
+            fechaISO: fechaISO
         });
         // ----------------------------------------------------
 
@@ -567,12 +588,113 @@ app.delete('/citas/:id', auth, allowRole('admin'), async (req, res) => {
         res.status(500).json({ error: 'Error al eliminar la cita: ' + err.message });
     }
 });
+//-----funcion para crear el pdf----//
+app.get('/citas/exportar-pdf', auth, allowRole('admin'), async (req, res) => {
+    try {
+        const { year, month } = req.query;
+        const fechaInicio = new Date(year, month - 1, 1);
+        const fechaFin = new Date(year, month, 1);
 
-server.listen(PORT, ()=>{
-    const address = server.address();
-    console.log('Direccion: '+address.address)
+        // 1. Buscamos SIN filtrar estados para ver qué trae la base de datos realmente
+        // Pero ordenamos por fecha
+        const citas = await Cita.find({
+            fechaHoraInicio: { $gte: fechaInicio, $lt: fechaFin }
+        }).sort({ fechaHoraInicio: 1 });
+
+        // 2. Definimos colores y etiquetas para cada estado
+        const configEstados = {
+            'confirmada': { color: '#2e7d32', label: 'CONFIRMADA' }, // Verde
+            'pendiente': { color: '#ed6c02', label: 'PENDIENTE' },  // Naranja
+            'cancelada': { color: '#d32f2f', label: 'CANCELADA' }   // Rojo
+        };
+
+        const body = [
+            [
+                { text: 'Fecha', style: 'tableHeader' },
+                { text: 'Paciente', style: 'tableHeader' },
+                { text: 'Médico', style: 'tableHeader' },
+                { text: 'Estado', style: 'tableHeader' },
+                { text: 'Costo', style: 'tableHeader' }
+            ]
+        ];
+
+        let totalIngresos = 0;
+        let contadorCitas = { confirmada: 0, pendiente: 0, cancelada: 0 };
+
+        citas.forEach(c => {
+            // Normalizamos el estado a minúsculas para que coincida con nuestro config
+            const estadoKey = (c.estado || 'pendiente').toLowerCase();
+            const config = configEstados[estadoKey] || { color: '#757575', label: estadoKey.toUpperCase() };
+
+            // Conteo para el resumen
+            if (contadorCitas.hasOwnProperty(estadoKey)) {
+                contadorCitas[estadoKey]++;
+            }
+
+            // Sumamos al total solo si NO está cancelada
+            if (estadoKey !== 'cancelada') {
+                totalIngresos += (c.costo || 0);
+            }
+
+            body.push([
+                new Date(c.fechaHoraInicio).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+                c.paciente.nombre,
+                c.medico.nombre,
+                { text: config.label, color: config.color, bold: true, fontSize: 8 },
+                `$${c.costo || 0}`
+            ]);
+        });
+
+        const docDefinition = {
+            defaultStyle: { font: 'Helvetica' },
+            content: [
+                { text: 'AGENDA MEDIWORK - REPORTE MENSUAL', style: 'header' },
+                { text: `Periodo: ${month}/${year} | Generado: ${new Date().toLocaleDateString()}`, margin: [0, 0, 0, 15] },
+                
+                // RESUMEN DE ESTADOS
+                {
+                    columns: [
+                        { text: `Confirmadas: ${contadorCitas.confirmada}`, color: '#2e7d32' },
+                        { text: `Pendientes: ${contadorCitas.pendiente}`, color: '#ed6c02' },
+                        { text: `Canceladas: ${contadorCitas.cancelada}`, color: '#d32f2f' }
+                    ],
+                    margin: [0, 0, 0, 15]
+                },
+
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: ['auto', '*', '*', 'auto', 'auto'],
+                        body: body
+                    },
+                    layout: 'lightHorizontalLines'
+                },
+                { text: `\nTOTAL INGRESOS ESTIMADOS: $${totalIngresos}`, style: 'total' }
+            ],
+            styles: {
+                header: { fontSize: 16, bold: true, color: '#2c3e50' },
+                tableHeader: { fillColor: '#f3f4f6', bold: true, fontSize: 10, margin: [0, 3, 0, 3] },
+                total: { fontSize: 14, bold: true, alignment: 'right', margin: [0, 10, 0, 0] }
+            }
+        };
+
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=Reporte_${month}.pdf`);
+        pdfDoc.pipe(res);
+        pdfDoc.end();
+
+    } catch (err) {
+        console.error("Error PDF:", err);
+        res.status(500).send("Error interno");
+    }
+});
+
+server.listen(PORT, () => {
+    const address = server.address();
+    console.log('Direccion: ' + address.address)
     // Usamos el log del SERVER_URL para mantener tu lógica existente
-    console.log('Servidor HTTP y Socket.IO corriendo en '+SERVER_URL+':'+PORT)
+    console.log('Servidor HTTP y Socket.IO corriendo en ' + SERVER_URL + ':' + PORT)
 });
 
 
