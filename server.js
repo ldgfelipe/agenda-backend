@@ -353,6 +353,8 @@ app.get('/citas/dia', auth, async (req, res) => {
     }
 });
 
+const { enviarConfirmacionCita } = require('./mail/emailService');
+
 // 🔑 RUTA POST: Crear una nueva cita
 app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
     try {
@@ -397,6 +399,14 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
             estado: estado || 'pendiente',
             creadoPor: req.user.id // Asume que 'auth' añade req.user
         });
+
+        enviarConfirmacionCita({
+            pacienteEmail: nuevaCita.paciente.correo,
+            pacienteNombre: nuevaCita.paciente.nombre,
+            fecha: nuevaCita.fechaHoraInicio.toLocaleDateString(),
+            hora: nuevaCita.fechaHoraInicio.toLocaleTimeString(),
+            consultorio: nuevaCita.consultorio.nombre
+            });
 
         // 4. Guardar la cita en la base de datos
         const citaGuardada = await nuevaCita.save();
