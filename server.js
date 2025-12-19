@@ -17,9 +17,9 @@ const allowRole = require('./middleware/role');
 const Consultorio = require('./models/Consultorio');
 const hostname=os.hostname();
 
-const isProd = hostname==='srv1180506' ? 'prod' : 'dev'
+const isProd = hostname==='agenda.mediwork.com.mx' ? 'prod' : 'dev'
 
-const PORT = process.env.PORT || 4000
+const PORT = process.env.PORT || 4001
 const MONGO_URI = isProd === 'prod' ? process.env.MONGO_URI_PROD : process.env.MONGO_URI_LOCAL
 const JWT_SECRET =  isProd === 'prod' ? process.env.JWT_SECRET_PROD : process.env.JWT_SECRET_LOCAL
 const SERVER_URL =  isProd === 'prod' ? process.env.SERVER_URL_PROD : process.env.SERVER_URL_LOCAL
@@ -38,7 +38,8 @@ app.use(cors());
 const server = http.createServer(app); 
 const allowedOrigins = [
     "http://localhost:8080",
-    "http://srv1180506.hstgr.cloud:8080" // Tu URL de producción
+    "http://srv1180506.hstgr.cloud:8080",
+    "https://agenda.mediwork.com.mx" // Tu URL de producción
 ];
 // Inicializamos Socket.IO adjunto al servidor HTTP
 const io = new Server(server, {
