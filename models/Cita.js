@@ -14,6 +14,10 @@ const CitaSchema = new mongoose.Schema({
             type: String,
             required: true
         },
+        tipo:{
+            type:String,
+            required:false
+        },
         id: {
             type: String,
             required: false

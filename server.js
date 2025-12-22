@@ -118,7 +118,7 @@ app.post('/login', async (req, res) => {
 
     if (!valido) return res.status(400).json({ error: 'Contraseña incorrecta' });
 
-    const token = jwt.sign({ id: usuario._id, rol: usuario.rol }, JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign({ id: usuario._id, rol: usuario.rol }, JWT_SECRET, { expiresIn: '12h' });
     const rol = usuario.rol
     const nombre = usuario.nombre
     const id = usuario._id
@@ -444,7 +444,8 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
             consultorio,
             medico: {
                 nombre: medico.nombre,
-                id: medicoIdFinal // 👈 Ahora usa el ID recién creado si aplica
+                id: medicoIdFinal, // 👈 Ahora usa el ID recién creado si aplica
+                tipo:medico.tipo ? 'x-hora' : 'normal'
             },
             paciente,
             costo,
