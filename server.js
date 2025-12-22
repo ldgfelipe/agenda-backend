@@ -363,7 +363,7 @@ app.get('/citas/dia', auth, async (req, res) => {
                 $gte: fechaInicio,
                 $lte: fechaFin
             },
-            estado: { $in: ['pendiente', 'confirmada'] }
+            estado: { $in: ['pendiente', 'confirmada','completada'] }
         }).populate('consultorio', 'nombre'); // Importante para saber qué consultorio está ocupado
 
         res.json(citas);
