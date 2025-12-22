@@ -245,7 +245,7 @@ app.get('/citas/disponibilidad', auth, async (req, res) => {
             {
                 $match: {
                     fechaHoraInicio: { $gte: fechaInicio, $lt: fechaFin },
-                    estado: { $in: ['pendiente', 'confirmada'] }
+                    estado: { $in: ['pendiente', 'confirmada', 'completada'] }
                 }
             },
             {
@@ -456,7 +456,9 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
         const citaGuardada = await nuevaCita.save();
 
         // 5. Envío de Correo (Mantenemos tu lógica)
+         if(nuevaCita.paciente.correo){
         try {
+           
             enviarConfirmacionCita({
                 pacienteEmail: nuevaCita.paciente.correo,
                 pacienteNombre: nuevaCita.paciente.nombre,
@@ -468,7 +470,7 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
         } catch (mailErr) {
             console.error("Error al enviar email (cita guardada ok):", mailErr);
         }
-
+    }
         // 6. Socket.IO y Respuesta
         const fechaISO = citaGuardada.fechaHoraInicio.toISOString().substring(0, 10);
         io.emit('cita:actualizada', { message: 'Nueva cita reservada', fechaISO });
