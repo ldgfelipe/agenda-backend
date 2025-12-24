@@ -93,7 +93,7 @@ const UsuarioSchema = new mongoose.Schema({
 
 const Usuario = mongoose.model('Usuario', UsuarioSchema);
 const Cita = require('./models/Cita'); // <--- ¡AÑADIR ESTA LÍNEA!
-
+const DiaBloqueado = require('./models/DiaBloqueado'); //<------ Se añade los días bloqueados
 
 //Registro
 app.post('/register', async (req, res) => {
@@ -690,6 +690,29 @@ app.get('/citas/exportar-pdf', auth, allowRole('admin'), async (req, res) => {
     } catch (err) {
         console.error("Error PDF:", err);
         res.status(500).send("Error interno");
+    }
+});
+
+
+// Obtener días bloqueados del mes
+app.get('/dias-bloqueados', auth, async (req, res) => {
+    const { year, month } = req.query;
+    const regex = new RegExp(`^${year}-${month.toString().padStart(2, '0')}`);
+    const dias = await DiaBloqueado.find({ fechaIso: { $regex: regex } });
+    res.json(dias.map(d => d.fechaIso));
+});
+
+// Bloquear/Desbloquear día (Solo Admin)
+app.post('/dias-bloqueados/toggle', auth, allowRole('admin'), async (req, res) => {
+    const { fechaIso } = req.body;
+    const existe = await DiaBloqueado.findOne({ fechaIso });
+    if (existe) {
+        await DiaBloqueado.deleteOne({ fechaIso });
+        return res.json({ bloqueado: false });
+    } else {
+        const nuevo = new DiaBloqueado({ fechaIso, creadoPor: req.user.id });
+        await nuevo.save();
+        return res.json({ bloqueado: true });
     }
 });
 
