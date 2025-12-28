@@ -27,7 +27,20 @@ const CitaSchema = new mongoose.Schema({
     // Fecha y hora de inicio de la cita
     fechaHoraInicio: {
         type: Date,
-        required: true
+    required: true,
+    set: function(fecha) {
+      if (!fecha) return fecha;
+      
+      // Si recibimos un string: "2025-12-26T19:00:00-06:00"
+      // o un objeto Date que ya viene desfasado
+      const fechaString = typeof fecha === 'string' ? fecha : fecha.toISOString();
+      
+      // EXTRAEMOS solo YYYY-MM-DDTHH:mm:ss y le clavamos la Z
+      // Esto "aplana" la fecha: las 19:00 locales se vuelven las 19:00 UTC
+      const fechaAplanada = fechaString.substring(0, 19) + '.000Z';
+      
+      return new Date(fechaAplanada);
+    }
     },
     // Fecha y hora de fin de la cita (asumiendo citas de 1 hora)
     fechaHoraFin: {

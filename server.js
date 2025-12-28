@@ -16,6 +16,7 @@ const auth = require('./middleware/auth');
 const allowRole = require('./middleware/role');
 const Consultorio = require('./models/Consultorio');
 const hostname = os.hostname();
+const moment = require('moment');
 
 /*---importaciones de pdf---*/
 const PdfPrinter = require('pdfmake');
@@ -427,14 +428,16 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
                 return res.status(500).json({ error: 'Error al intentar registrar al nuevo médico.' });
             }
         }
-
+        const fechaPlana = fechaHoraInicio.substring(0, 19);
+        const fechaForzada = `${fechaPlana}.000Z`;
         // 3. Validación de Superposición
         const superposicion = await Cita.findOne({
             consultorio,
-            fechaHoraInicio: new Date(fechaHoraInicio),
+            fechaHoraInicio: fechaForzada,
             estado: { $ne: 'cancelada' }
         });
 
+        console.log(fechaForzada)
         if (superposicion) {
             return res.status(409).json({ error: 'Conflicto de horario en este consultorio.' });
         }
@@ -449,7 +452,7 @@ app.post('/citas', auth, allowRole('admin', 'medico'), async (req, res) => {
             },
             paciente,
             costo,
-            fechaHoraInicio: new Date(fechaHoraInicio),
+            fechaHoraInicio: fechaForzada,
             estado: estado || 'pendiente',
             creadoPor: req.user.id
         });
