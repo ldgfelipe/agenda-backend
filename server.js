@@ -32,7 +32,6 @@ const fonts = {
     }
 };
 
-
 const printer = new PdfPrinter(fonts);
 
 
@@ -60,9 +59,12 @@ app.use(cors());
 const server = http.createServer(app);
 const allowedOrigins = [
     "http://localhost:8080",
+    "http://192.168.1.56:8080",
     "http://srv1180506.hstgr.cloud:8080",
     "https://agenda.mediwork.com.mx" // Tu URL de producción
 ];
+
+console.log(allowedOrigins)
 // Inicializamos Socket.IO adjunto al servidor HTTP
 const io = new Server(server, {
     cors: {
@@ -564,7 +566,7 @@ app.put('/citas/:id', auth, allowRole('admin', 'medico'), async (req, res) => {
 });
 
 // 🔑 RUTA DELETE: Eliminar permanentemente una cita por su ID (Solo para Admin)
-app.delete('/citas/:id', auth, allowRole('admin'), async (req, res) => {
+app.delete('/citas/:id', auth,  async (req, res) => {
     try {
         const { id } = req.params;
 
